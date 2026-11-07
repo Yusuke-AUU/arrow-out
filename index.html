@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>ARROW OUT - 矢印ぬけパズル</title>
+<meta name="description" content="矢印をタップして全部抜く、癒やしの矢印パズル。">
+<meta name="theme-color" content="#EEF1F6">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="ARROW OUT">
+<meta property="og:title" content="ARROW OUT - 矢印ぬけパズル">
+<meta property="og:description" content="矢印をタップして全部抜く、癒やしの矢印パズル。">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{height:100%;overflow:hidden;background:#EEF1F6;font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Helvetica Neue",Arial,sans-serif;color:#1F2A44;touch-action:none}
+  #app{position:fixed;inset:0;display:flex;flex-direction:column}
+  #hud{display:flex;align-items:center;gap:8px;padding:calc(env(safe-area-inset-top) + 10px) 12px 8px}
+  .pill{background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(31,42,68,.08);display:flex;align-items:center;justify-content:center;height:56px}
+  #lv{flex:0 0 74px;flex-direction:column;line-height:1}
+  #lv small{font-size:11px;font-weight:700;color:#8A93A6;letter-spacing:1px}
+  #lv b{font-size:24px;font-weight:900}
+  #lives{flex:1;gap:6px}
+  #lives svg{width:26px;height:30px;transition:transform .2s,opacity .2s}
+  #lives svg.lost{opacity:.18;transform:scale(.8)}
+  #prog{flex:1.2;flex-direction:column;gap:6px;padding:0 12px}
+  #prog b{font-size:20px;font-weight:900}
+  #bar{width:100%;height:8px;border-radius:4px;background:#E3E7EF;overflow:hidden}
+  #bar i{display:block;height:100%;width:0;background:#2FA84F;border-radius:4px;transition:width .25s}
+  .btn{flex:0 0 56px;border:none;cursor:pointer}
+  .btn svg{width:26px;height:26px}
+  #stage{flex:1;position:relative}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+  #foot{display:flex;justify-content:center;gap:12px;padding:6px 12px calc(env(safe-area-inset-bottom) + 14px)}
+  #hint{height:48px;padding:0 22px;border:none;border-radius:24px;background:#fff;box-shadow:0 2px 8px rgba(31,42,68,.1);font-size:15px;font-weight:800;color:#1F2A44;display:flex;align-items:center;gap:8px;cursor:pointer}
+  #hint span{background:#F0900F;color:#fff;border-radius:10px;padding:1px 8px;font-size:13px}
+  #hint:disabled{opacity:.4}
+  #pop{position:absolute;left:50%;top:6%;transform:translate(-50%,0) scale(.6);font-size:38px;font-weight:900;font-style:italic;color:#7ED957;-webkit-text-stroke:2px #2B7A1E;opacity:0;pointer-events:none;transition:none;letter-spacing:1px}
+  #pop.show{animation:pop .7s ease-out forwards}
+  @keyframes pop{0%{opacity:0;transform:translate(-50%,10px) scale(.6)}20%{opacity:1;transform:translate(-50%,0) scale(1.1)}70%{opacity:1;transform:translate(-50%,-6px) scale(1)}100%{opacity:0;transform:translate(-50%,-16px) scale(1)}}
+  #ov{position:fixed;inset:0;background:rgba(238,241,246,.86);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;z-index:10;text-align:center;padding:24px}
+  #ov.on{display:flex}
+  #ov h1{font-size:40px;font-weight:900;letter-spacing:1px}
+  #ov p{font-size:15px;color:#5B6478;line-height:1.6}
+  #ov button{margin-top:8px;height:56px;min-width:200px;border:none;border-radius:28px;background:#1F2A44;color:#fff;font-size:18px;font-weight:800;cursor:pointer;box-shadow:0 6px 16px rgba(31,42,68,.25)}
+  .logo{display:flex;gap:6px;justify-content:center;margin-bottom:4px}
+  .logo i{width:14px;height:14px;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="pill" id="lv"><small>LEVEL</small><b id="lvn">1</b></div>
+    <div class="pill" id="lives"></div>
+    <div class="pill" id="prog"><b id="pct">0%</b><div id="bar"><i id="barf"></i></div></div>
+    <button class="pill btn" id="retry" aria-label="やり直し"><svg viewBox="0 0 24 24" fill="none" stroke="#3B7DD8" stroke-width="3" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v4.5h-4.5"/></svg></button>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas><div id="pop">Good</div></div>
+  <div id="foot"><button id="hint">💡 ヒント <span id="hintn">3</span></button></div>
+</div>
+<div id="ov"></div>
+
+<script>
+(()=>{
+'use strict';
+const COLORS=['#E5484D','#F0900F','#2FA84F','#3B7DD8','#E5484D','#3B7DD8','#2FA84F','#F0900F','#1F2A44'];
+const DIRS=[[1,0],[0,1],[-1,0],[0,-1]];
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const $=id=>document.getElementById(id);
+
+// ---------- 保存 ----------
+const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+
+// ---------- 乱数（レベルごとに固定） ----------
+function rngOf(seed){let a=seed>>>0;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+// ---------- 状態 ----------
+let level=store.get('ao_level',1),cols,rows,occ,snakes,total,removed,lives,hints,combo=0,lastClear=0,state='play';
+let cs=20,ox=0,oy=0,W=0,H=0,DPR=1;
+
+// ---------- 盤面生成 ----------
+// 「置いた時点で矢印の先が盤外まで空いている」折れ線だけを置いていく。
+// 後から置いた線が前の線の出口をふさぐ → 置いた逆順に抜けば必ず全消しできる（必ず解ける）。
+// 空きマスを何周もなめて、各マスから何通りも試すことで高密度に敷き詰める。
+function generate(lv){
+  const rng=rngOf(lv*7919+17);
+  cols=Math.min(7+Math.floor(lv/2),16);
+  rows=Math.min(Math.round(cols*1.55),26);
+  const maxLen=Math.min(4+Math.floor(lv/2),16);
+  const minLen=lv<3?2:3;
+  occ=Array.from({length:rows},()=>new Array(cols).fill(-1));
+  const inB=(c,r)=>c>=0&&r>=0&&c<cols&&r<rows;
+  const list=[];
+  const mine=new Set();
+  const rayOK=(h,dx,dy)=>{let c=h.c+dx,r=h.r+dy;while(inB(c,r)){if(occ[r][c]!==-1||mine.has(r*cols+c))return false;c+=dx;r+=dy}return true};
+  const place=cells=>{const id=list.length;const a=cells[cells.length-2],b=cells[cells.length-1];
+    list.push({cells,dx:b.c-a.c,dy:b.r-a.r});cells.forEach(p=>occ[p.r][p.c]=id)};
+  function attempt(sc,sr,min){
+    const len=min+Math.floor(rng()*(maxLen-min+1));
+    let d=Math.floor(rng()*4);const cells=[{c:sc,r:sr}];
+    mine.clear();mine.add(sr*cols+sc);
+    let best=null;
+    for(let i=1;i<len;i++){
+      const last=cells[cells.length-1];const rr=rng();
+      const order=rr<0.5?[d,(d+1)%4,(d+3)%4]:(rr<.75?[(d+1)%4,(d+3)%4,d]:[(d+3)%4,(d+1)%4,d]);
+      let ok=false;
+      for(const nd of order){const nc=last.c+DIRS[nd][0],nr=last.r+DIRS[nd][1];
+        if(inB(nc,nr)&&occ[nr][nc]===-1&&!mine.has(nr*cols+nc)){cells.push({c:nc,r:nr});mine.add(nr*cols+nc);d=nd;ok=true;break}}
+      if(!ok)break;
+      if(cells.length>=min){
+        const h=cells[cells.length-1],p=cells[cells.length-2];
+        if(rayOK(h,h.c-p.c,h.r-p.r))best=cells.slice();
+        else{const t=cells[0],q=cells[1];if(rayOK(t,t.c-q.c,t.r-q.r))best=cells.slice().reverse()}
+      }
+    }
+    return best;
+  }
+  for(let pass=0;pass<4;pass++){
+    const min=pass<2?minLen:2;
+    const em=[];for(let r=0;r<rows;r++)for(let c=0;c<cols;c++)if(occ[r][c]===-1)em.push([c,r]);
+    for(let i=em.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[em[i],em[j]]=[em[j],em[i]]}
+    for(const[c,r]of em){
+      if(occ[r][c]!==-1)continue;
+      let got=null;
+      for(let k=0;k<24;k++){const g=attempt(c,r,min);if(g&&(!got||g.length>got.length))got=g;if(got&&got.length>=maxLen-1)break}
+      if(got)place(got);
+    }
+  }
+  snakes=[];let filled=0;
+  list.forEach((s,id)=>{
+    let color;
+    do{color=COLORS[Math.floor(rng()*COLORS.length)]}while(id>0&&color===snakes[id-1].color&&rng()<.7);
+    snakes.push({id,cells:s.cells,dx:s.dx,dy:s.dy,color,st:'idle',s:0,v:0,max:0,back:false,err:0,hint:0});
+    filled+=s.cells.length;
+  });
+  total=filled;removed=0;
+}
+
+function startLevel(){
+  generate(level);
+  lives=3;hints=3;combo=0;state='play';
+  $('lvn').textContent=level;
+  renderLives();updateProg();updateHint();
+  $('ov').classList.remove('on');
+  resize();
+}
+
+// ---------- HUD ----------
+const heart=c=>`<svg viewBox="0 0 26 30"><path d="M13 1 L24 14 H17 V29 H9 V14 H2 Z" fill="${c}"/></svg>`;
+function renderLives(){
+  const cl=['#E5484D','#F0900F','#F5B800'];
+  $('lives').innerHTML=cl.map(heart).join('');
+  [...$('lives').children].forEach((el,i)=>{if(i>=lives)el.classList.add('lost')});
+}
+function updateProg(){const p=total?Math.floor(removed/total*100):0;$('pct').textContent=p+'%';$('barf').style.width=p+'%'}
+function updateHint(){$('hintn').textContent=hints;$('hint').disabled=hints<=0||state!=='play'}
+function popText(t){const el=$('pop');el.textContent=t;el.classList.remove('show');void el.offsetWidth;el.classList.add('show')}
+
+// ---------- レイアウト ----------
+function resize(){
+  const st=$('stage').getBoundingClientRect();
+  DPR=Math.min(window.devicePixelRatio||1,3);
+  W=st.width;H=st.height;
+  cv.width=W*DPR;cv.height=H*DPR;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const pad=14;
+  cs=Math.min((W-pad*2)/cols,(H-pad*2)/rows);
+  ox=(W-cs*cols)/2;oy=(H-cs*rows)/2;
+}
+addEventListener('resize',()=>{if(cols)resize()});
+
+// ---------- 判定 ----------
+function rayInfo(sn){
+  const h=sn.cells[sn.cells.length-1];let c=h.c+sn.dx,r=h.r+sn.dy,k=0;
+  while(c>=0&&r>=0&&c<cols&&r<rows){if(occ[r][c]!==-1)return{blocked:true,k};c+=sn.dx;r+=sn.dy;k++}
+  return{blocked:false,k};
+}
+// ヘビの軌道：自分の体 → 矢印方向へ盤外のずっと先まで
+function ext(sn){
+  if(sn._ext)return sn._ext;
+  const a=sn.cells.slice();const h=a[a.length-1];
+  const n=cols+rows+sn.cells.length+6;
+  for(let i=1;i<=n;i++)a.push({c:h.c+sn.dx*i,r:h.r+sn.dy*i});
+  return sn._ext=a;
+}
+
+function tap(x,y){
+  if(state!=='play')return;
+  const fx=(x-ox)/cs-.5,fy=(y-oy)/cs-.5;
+  const c0=Math.round(fx),r0=Math.round(fy);
+  let best=-1,bd=0.75;
+  for(let r=r0-1;r<=r0+1;r++)for(let c=c0-1;c<=c0+1;c++){
+    if(c<0||r<0||c>=cols||r>=rows)continue;
+    const id=occ[r][c];if(id===-1)continue;
+    const d=Math.hypot(fx-c,fy-r);if(d<bd){bd=d;best=id}
+  }
+  if(best===-1)return;
+  const sn=snakes[best];if(sn.st!=='idle')return;
+  sn.hint=0;
+  const ri=rayInfo(sn);
+  if(!ri.blocked){
+    sn.st='out';sn.v=12;
+    for(const p of sn.cells)occ[p.r][p.c]=-1;
+    removed+=sn.cells.length;updateProg();
+    const now=performance.now();
+    combo=(now-lastClear<1100)?combo+1:0;lastClear=now;
+    popText(combo>=4?'Perfect!':combo>=2?'Great!':'Good');
+    if(navigator.vibrate)try{navigator.vibrate(8)}catch(e){}
+    if(snakes.every(s=>s.st!=='idle'&&s.st!=='bump'))state='clearing';
+  }else{
+    sn.st='bump';sn.v=16;sn.max=ri.k+0.3;sn.back=false;sn.err=1;
+    lives--;renderLives();combo=0;
+    if(navigator.vibrate)try{navigator.vibrate([30,40,30])}catch(e){}
+    if(lives<=0){state='over';setTimeout(showOver,650)}
+  }
+  updateHint();
+}
+
+cv.addEventListener('pointerdown',e=>{const r=cv.getBoundingClientRect();tap(e.clientX-r.left,e.clientY-r.top)});
+
+$('retry').onclick=()=>startLevel();
+$('hint').onclick=()=>{
+  if(hints<=0||state!=='play')return;
+  const cand=snakes.filter(s=>s.st==='idle'&&!rayInfo(s).blocked);
+  if(!cand.length)return;
+  cand.sort((a,b)=>b.cells.length-a.cells.length);
+  cand[0].hint=3.5;hints--;updateHint();
+};
+
+// ---------- オーバーレイ ----------
+function showClear(){
+  const ov=$('ov');
+  ov.innerHTML=`<div class="logo"><i style="background:#E5484D"></i><i style="background:#F0900F"></i><i style="background:#2FA84F"></i><i style="background:#3B7DD8"></i></div><h1>CLEAR!</h1><p>LEVEL ${level} クリア<br>残りライフ ${'♥'.repeat(lives)}</p><button id="nx">次のレベルへ</button>`;
+  ov.classList.add('on');
+  $('nx').onclick=()=>{level++;store.set('ao_level',level);startLevel()};
+}
+function showOver(){
+  const ov=$('ov');
+  ov.innerHTML=`<h1>GAME OVER</h1><p>矢印の先がふさがっていると<br>ぶつかってライフが減ります</p><button id="rt">もう一度</button>`;
+  ov.classList.add('on');
+  $('rt').onclick=()=>startLevel();
+}
+function showTitle(){
+  const ov=$('ov');
+  ov.innerHTML=`<div class="logo"><i style="background:#E5484D"></i><i style="background:#F0900F"></i><i style="background:#2FA84F"></i><i style="background:#3B7DD8"></i></div><h1>ARROW OUT</h1><p>矢印をタップすると、その向きにスルスル抜けます。<br>先がふさがっているとぶつかってライフ−1。<br>全部抜いたらクリア！</p><button id="st">${level>1?'LEVEL '+level+' から':'スタート'}</button>`;
+  ov.classList.add('on');
+  $('st').onclick=()=>{ov.classList.remove('on')};
+}
+
+// ---------- 描画 ----------
+function P(c,r){return[ox+(c+.5)*cs,oy+(r+.5)*cs]}
+function at(e,t){
+  const i=Math.max(0,Math.min(Math.floor(t),e.length-1)),f=t-i;
+  const a=e[i],b=e[Math.min(i+1,e.length-1)];
+  return{c:a.c+(b.c-a.c)*f,r:a.r+(b.r-a.r)*f};
+}
+function drawSnake(sn,t){
+  const e=ext(sn),L=sn.cells.length-1,s=sn.s,en=s+L;
+  const pts=[at(e,s)];
+  for(let i=Math.floor(s)+1;i<en-1e-6;i++)pts.push(e[i]);
+  const head=at(e,en);pts.push(head);
+  let col=sn.color;
+  if(sn.err>0){col=lerpCol(sn.color,'#FF2D2D',Math.min(1,sn.err*1.4))}
+  let shake=0;if(sn.err>0&&sn.st==='idle')shake=Math.sin(t*0.08)*cs*0.06*sn.err;
+  const lw=cs*0.2;
+  ctx.save();
+  if(sn.hint>0){ctx.shadowColor=sn.color;ctx.shadowBlur=cs*(0.5+0.4*Math.sin(t*0.012))}
+  ctx.translate(shake*sn.dy,shake*sn.dx);
+  ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=lw;ctx.lineCap='round';ctx.lineJoin='round';
+  ctx.beginPath();
+  pts.forEach((p,i)=>{const[x,y]=P(p.c,p.r);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});
+  ctx.stroke();
+  // 矢じり
+  const[hx,hy]=P(head.c,head.r);const dx=sn.dx,dy=sn.dy;
+  const tip=[hx+dx*cs*0.36,hy+dy*cs*0.36],base=[hx-dx*cs*0.06,hy-dy*cs*0.06],w=cs*0.27;
+  ctx.beginPath();
+  ctx.moveTo(tip[0],tip[1]);
+  ctx.lineTo(base[0]-dy*w,base[1]+dx*w);
+  ctx.lineTo(base[0]+dy*w,base[1]-dx*w);
+  ctx.closePath();ctx.lineJoin='round';ctx.lineWidth=cs*0.06;ctx.stroke();ctx.fill();
+  ctx.restore();
+}
+function lerpCol(a,b,t){
+  const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16);
+  const ch=sh=>Math.round(((pa>>sh)&255)*(1-t)+((pb>>sh)&255)*t);
+  return`rgb(${ch(16)},${ch(8)},${ch(0)})`;
+}
+
+let lastT=performance.now();
+function frame(t){
+  const dt=Math.min(0.05,(t-lastT)/1000);lastT=t;
+  ctx.clearRect(0,0,W,H);
+  // グリッドの点
+  ctx.fillStyle='#D3D9E4';
+  const dr=Math.max(1.2,cs*0.05);
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    if(occ[r][c]!==-1)continue;
+    const[x,y]=P(c,r);ctx.beginPath();ctx.arc(x,y,dr,0,Math.PI*2);ctx.fill();
+  }
+  let busy=false;
+  for(const sn of snakes){
+    if(sn.st==='gone')continue;
+    if(sn.st==='out'){
+      busy=true;
+      sn.v=Math.min(sn.v+dt*90,55);sn.s+=sn.v*dt;
+      if(sn.s>=ext(sn).length-sn.cells.length){sn.st='gone';continue}
+    }else if(sn.st==='bump'){
+      busy=true;
+      if(!sn.back){sn.s+=sn.v*dt;if(sn.s>=sn.max){sn.s=sn.max;sn.back=true}}
+      else{sn.s-=sn.v*0.7*dt;if(sn.s<=0){sn.s=0;sn.st='idle'}}
+    }
+    if(sn.err>0)sn.err=Math.max(0,sn.err-dt*1.6);
+    if(sn.hint>0)sn.hint=Math.max(0,sn.hint-dt);
+    drawSnake(sn,t);
+  }
+  if(state==='clearing'&&!busy){state='done';setTimeout(showClear,250)}
+  requestAnimationFrame(frame);
+}
+
+startLevel();
+showTitle();
+requestAnimationFrame(frame);
+if('serviceWorker' in navigator&&location.protocol==='https:'){addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
+})();
+</script>
+</body>
+</html>
